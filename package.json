@@ -1,0 +1,15 @@
+{
+  "name": "slack-mixpanel-tracker",
+  "version": "0.0.1",
+  "description": "Report Slack activity to Mixpanel",
+  "main": "index.js",
+  "dependencies": {
+    "mixpanel": "^0.3.1",
+    "slackbotapi": "^1.3.7"
+  },
+  "scripts": {
+    "run": "node index.js"
+  },
+  "author": "Arseniy Ivanov (arseniy@freeatnet.com)",
+  "license": "MIT"
+}
