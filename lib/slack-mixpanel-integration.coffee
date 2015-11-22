@@ -1,3 +1,4 @@
+_ = require('underscore')
 logger = require('jethro')
 Slack = require('slack-api').promisify()
 SlackRTM = require('slackbotapi')
@@ -16,8 +17,26 @@ module.exports = class
 
   constructor: (mixpanelToken, @botToken, @adminToken) ->
     @mixpanel = Mixpanel.init(mixpanelToken)
+    @fetchUsersList()
     @configureBotPresence()
     return @
+
+  fetchUsersList: () ->
+    logger 'debug', 'startup', "Fetching users list"
+
+    storeUserList = (data) =>
+      logger 'debug', 'startup', "Storing users list"
+      @peopleMapping = {}
+      data['members'].forEach (member) =>
+        @peopleMapping[member['id']] = member
+      logger 'info', 'startup', "Stored #{_.keys(@peopleMapping).length} users"
+      return
+
+    Slack.users.list(token: @botToken).then(storeUserList).catch @SLACK_API_ERRORS..., (error) ->
+      logger 'warning', 'startup', "Could not list users in the team: #{error}"
+      return
+
+    return
 
   configureBotPresence: ->
     logger 'debug', 'startup', "Fetching bot user info"
@@ -62,10 +81,10 @@ module.exports = class
   configureRtm: ->
     @rtm = new SlackRTM 'token': @botToken, 'logging': true, 'autoReconnect': true
 
-
     @rtm.on 'channel_created', @onChannelCreated
     @rtm.on 'message', @onMessage
     @rtm.on 'team_join', @onTeamJoin
+    @rtm.on 'user_change', @onUserChange
     return
 
   onMessage: (data) =>
@@ -97,13 +116,23 @@ module.exports = class
     return
 
   onTeamJoin: (data) =>
-    # TODO: team_join should store user data in data mapping
     user = data['user']
-    mixpanel.people.set data['user']['id'],
+    @peopleMapping[user['id']] = data['user']
+    @mixpanel.people.set user['id'], _.extend({}, @userTypeToMixpanelUser(user), { 'Human name': user['profile']['real_name'] or user['name'] })
+    return
+
+  onUserChange: (data) =>
+    user = data['user']
+    @peopleMapping[user['id']] = data['user']
+    @mixpanel.people.set user['id'], @userTypeToMixpanelUser(user)
+    return
+
+  userTypeToMixpanelUser: (user) ->
+    return {
       $email: user['profile']['email']
       $name: user['profile']['real_name'] or user['name']
       $first_name: user['profile']['first_name']
       $last_name: user['profile']['last_name']
       'Username': user['name']
-    return
-
+      'About': user['profile']['title']
+    }
