@@ -1,7 +1,7 @@
 SlackMixpanelIntegration = require('./lib/slack-mixpanel-integration')
 
-MIXPANEL_TOKEN = '<MIXPANEL TOKEN>'
-BOT_TOKEN = '<BOT TOKEN>'
-ADMIN_TOKEN = '<REAL USER WITH INVITE PRIVILEDGE TOKEN>'
+MIXPANEL_TOKEN = process.env.MIXPANEL_TOKEN
+BOT_TOKEN = process.env.BOT_TOKEN
+ADMIN_TOKEN = process.env.ADMIN_TOKEN
 
 integration = new SlackMixpanelIntegration MIXPANEL_TOKEN, BOT_TOKEN, ADMIN_TOKEN
