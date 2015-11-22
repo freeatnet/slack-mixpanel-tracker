@@ -64,7 +64,6 @@ module.exports = class
 
     @rtm.on 'channel_created', @onChannelCreated
     @rtm.on 'message', @onMessage
-    @rtm.on 'reaction_added', @onReactionAdded
     @rtm.on 'team_join', @onTeamJoin
     return
 
@@ -105,6 +104,3 @@ module.exports = class
       'Username': user['name']
     return
 
-  onReactionAdded: (data) =>
-    console.log data
-    return
