@@ -36,6 +36,7 @@ module.exports = class
     Slack.channel.list(exclude_archived: 1, token: @botToken).then((data) =>
       logger 'debug', 'startup', "Received channel list"
       data.channels.forEach (channel) =>
+        @channelMapping[channel['id']] = channel
         @joinChannel(channel['id']) if not channel['is_member']
         return
 
@@ -78,14 +79,16 @@ module.exports = class
       logger 'debug', 'event:message', "Ignoring message because subtype #{data['subtype']} is not supported."
       return
 
+    channelId = data['channel']
+    channelName = @channelMapping[channelId]['name']
     mpEventData =
       distinct_id: data['user']
-      'Channel': data['channel'] # TODO: Map channel ID to channel name
+      'Channel': channelName
       'Text': data['text']
 
     @mixpanel.track 'Channel Message Sent', mpEventData
     @mixpanel.people.increment data['user'], 'Message Count', 1
-    @mixpanel.people.append data['user'], 'Channels', data['channel'] # TODO: Also map channel ID to channel name
+    @mixpanel.people.append data['user'], 'Channels', channelName
     return
 
   onChannelCreated: (data) =>
