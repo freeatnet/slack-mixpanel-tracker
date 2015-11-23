@@ -15,8 +15,36 @@ module.exports = class
   channelMapping: {}
   peopleMapping: {}
 
+  mp:
+    recordChannelMessage: (channel, message) ->
+      mpEventData =
+        distinct_id: message['user']
+        'Channel': channel['name']
+        'Text': message['text']
+
+      @mixpanel.track 'Channel Message Sent', mpEventData
+      @mixpanel.people.increment message['user'], 'Message Count', 1
+      @mixpanel.people.append message['user'], 'Channels', channel['name']
+
+    createUserProfile: (user) ->
+      @mixpanel.people.set user['id'], @userTypeToMixpanelUser(user)
+
+    updateUserProfile: (user) ->
+      @mixpanel.people.set user['id'], @userTypeToMixpanelUser(user)
+
+    userTypeToMixpanelUser: (user) ->
+      return {
+        $email: user['profile']['email']
+        $name: user['profile']['first_name'] or user['name']
+        $first_name: user['profile']['first_name']
+        $last_name: user['profile']['last_name']
+        'Username': user['name']
+        'Real Name': user['profile']['real_name']
+        'About': user['profile']['title']
+      }
+
   constructor: (mixpanelToken, @botToken, @adminToken) ->
-    @mixpanel = Mixpanel.init(mixpanelToken)
+    @mp.mixpanel = Mixpanel.init(mixpanelToken)
     @fetchUsersList()
     @configureBotPresence()
     return @
@@ -27,6 +55,7 @@ module.exports = class
     storeUserList = (data) =>
       logger 'debug', 'startup', "Storing users list"
       @peopleMapping = {}
+
       data['members'].forEach (member) =>
         @peopleMapping[member['id']] = member
       logger 'info', 'startup', "Stored #{_.keys(@peopleMapping).length} users"
@@ -98,16 +127,7 @@ module.exports = class
       logger 'debug', 'event:message', "Ignoring message because subtype #{data['subtype']} is not supported."
       return
 
-    channelId = data['channel']
-    channelName = @channelMapping[channelId]['name']
-    mpEventData =
-      distinct_id: data['user']
-      'Channel': channelName
-      'Text': data['text']
-
-    @mixpanel.track 'Channel Message Sent', mpEventData
-    @mixpanel.people.increment data['user'], 'Message Count', 1
-    @mixpanel.people.append data['user'], 'Channels', channelName
+    @mp.recordChannelMessage(@channelMapping[data['channel']], data)
     return
 
   onChannelCreated: (data) =>
@@ -117,22 +137,14 @@ module.exports = class
 
   onTeamJoin: (data) =>
     user = data['user']
-    @peopleMapping[user['id']] = data['user']
-    @mixpanel.people.set user['id'], _.extend({}, @userTypeToMixpanelUser(user), { 'Human name': user['profile']['real_name'] or user['name'] })
+    @peopleMapping[user['id']] = user
+    @mp.createUserProfile(user)
     return
 
   onUserChange: (data) =>
     user = data['user']
-    @peopleMapping[user['id']] = data['user']
-    @mixpanel.people.set user['id'], @userTypeToMixpanelUser(user)
+    @peopleMapping[user['id']] = user
+    @mp.updateUserProfile(user)
     return
 
-  userTypeToMixpanelUser: (user) ->
-    return {
-      $email: user['profile']['email']
-      $name: user['profile']['real_name'] or user['name']
-      $first_name: user['profile']['first_name']
-      $last_name: user['profile']['last_name']
-      'Username': user['name']
-      'About': user['profile']['title']
-    }
+
