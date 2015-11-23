@@ -1,4 +1,5 @@
 _ = require('underscore')
+Promise = require('bluebird')
 logger = require('jethro')
 Slack = require('slack-api').promisify()
 SlackRTM = require('slackbotapi')
@@ -45,56 +46,58 @@ module.exports = class
 
   constructor: (mixpanelToken, @botToken, @adminToken) ->
     @mp.mixpanel = Mixpanel.init(mixpanelToken)
-    @fetchUsersList()
-    @configureBotPresence()
+
+    # Kick off initial requests to get information
+    Promise.all([@fetchBotInfo(), @fetchUsersList(), @fetchChannelsList()]).then () =>
+      # Join any channels the bot is not a part of
+      _.select(@channelMapping, (channel) -> not channel['is_member']).map (channel) =>
+        logger('debug', 'startup', "Joining #{channel['name']}")
+        return @joinChannel(channel['id'])
+
+      # Configure real-time presence
+      @configureRtm()
+
     return @
 
   fetchUsersList: () ->
     logger 'debug', 'startup', "Fetching users list"
-
     storeUserList = (data) =>
-      logger 'debug', 'startup', "Storing users list"
+      logger 'debug', 'startup', "Received users list"
       @peopleMapping = {}
-
       data['members'].forEach (member) =>
         @peopleMapping[member['id']] = member
       logger 'info', 'startup', "Stored #{_.keys(@peopleMapping).length} users"
       return
-
-    Slack.users.list(token: @botToken).then(storeUserList).catch @SLACK_API_ERRORS..., (error) ->
+    promise = Slack.users.list(token: @botToken).then(storeUserList).catch @SLACK_API_ERRORS..., (error) ->
       logger 'warning', 'startup', "Could not list users in the team: #{error}"
       return
+    return promise
 
-    return
-
-  configureBotPresence: ->
-    logger 'debug', 'startup', "Fetching bot user info"
-    Slack.auth.test(token: @botToken).then((data) =>
-      logger 'debug', 'startup', "Received bot user info"
-      @botUserInfo = data
-      @joinMissingChannels()
-      return
-    ).catch @SLACK_API_ERRORS..., (error) ->
-      logger 'error', 'startup', "Could not retrieve bot's user info #{error}"
-      return
-
-  joinMissingChannels: ->
+  fetchChannelsList: () ->
     logger 'debug', 'startup', "Fetching channel list"
-
-    Slack.channel.list(exclude_archived: 1, token: @botToken).then((data) =>
+    promise = Slack.channel.list(exclude_archived: 1, token: @botToken).then((data) =>
       logger 'debug', 'startup', "Received channel list"
+      @channelMapping = {}
       data.channels.forEach (channel) =>
         @channelMapping[channel['id']] = channel
-        @joinChannel(channel['id']) if not channel['is_member']
         return
-
-      # Continue configuration workflow
-      @configureRtm() # Is there a better way to do this?
       return
     ).catch @SLACK_API_ERRORS..., (error) ->
       logger 'warning', 'startup', "Could not list bot's channels: #{error}"
       return
-    return
+
+    return promise
+
+  fetchBotInfo: ->
+    logger 'debug', 'startup', "Fetching bot user info"
+    promise = Slack.auth.test(token: @botToken).then((data) =>
+      logger 'debug', 'startup', "Received bot user info"
+      @botUserInfo = data
+      return
+    ).catch @SLACK_API_ERRORS..., (error) ->
+      logger 'error', 'startup', "Could not retrieve bot's user info #{error}"
+      return
+    return promise
 
   joinChannel: (channelId) ->
     logger 'debug', 'startup', "Attempting to join #{channelId}"
@@ -104,8 +107,11 @@ module.exports = class
       user: @botUserInfo['user_id']
       token: @adminToken
 
-    Slack.channel.invite(selfInviteParams).catch @SLACK_API_ERRORS..., (error) ->
+    # TODO: change is_member flag in local mapping when successful
+    promise = Slack.channel.invite(selfInviteParams).catch @SLACK_API_ERRORS..., (error) ->
       logger 'warning', 'startup', "Error attempting to join #{channelId}: #{error}"
+
+    return promise
 
   configureRtm: ->
     @rtm = new SlackRTM 'token': @botToken, 'logging': true, 'autoReconnect': true
