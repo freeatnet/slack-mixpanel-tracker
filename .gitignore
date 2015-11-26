@@ -1,1 +1,6 @@
+# Where I store tokens:
+.env
+
+# Node files:
 node_modules/
+npm-debug.log
