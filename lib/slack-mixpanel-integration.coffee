@@ -25,7 +25,7 @@ module.exports = class
 
       @mixpanel.track 'Channel Message Sent', mpEventData
       @mixpanel.people.increment message['user'], 'Message Count', 1
-      @mixpanel.people.append message['user'], 'Channels', channel['name']
+      @mixpanel.people.union message['user'], {'Channels': channel['name']}
 
     createUserProfile: (user) ->
       @mixpanel.people.set user['id'], @userTypeToMixpanelUser(user)
